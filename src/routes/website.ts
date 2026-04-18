@@ -1,4 +1,4 @@
-import { Router, Response } from 'express'
+import { Router,Request, Response } from 'express'
 import { authenticate, requireCredits, AuthRequest } from '../middleware/auth'
 import { creditsService } from '../services/credits'
 import { claudeService } from '../services/claude'
@@ -128,25 +128,25 @@ router.get(
     }
   )
 
-// ── GET /website/preview/public/:jobId ──────────────────
+  // ── GET /website/preview/public/:jobId (no auth) ─────────
 router.get(
-    '/preview/public/:jobId',
-    async (req: Request, res: Response): Promise<void> => {
-      try {
-        const job = await Job.findById(req.params.jobId)
-  
-        if (!job || job.status !== 'COMPLETED' || !job.outputData) {
-          res.status(404).send('<h1>Website not found or not ready</h1>')
-          return
-        }
-  
-        const { html } = job.outputData as { html: string }
-        res.setHeader('Content-Type', 'text/html')
-        res.send(html)
-      } catch (err: any) {
-        res.status(500).send('<h1>Error loading website</h1>')
+  '/preview/public/:jobId',
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const job = await Job.findById(req.params.jobId)
+
+      if (!job || job.status !== 'COMPLETED' || !job.outputData) {
+        res.status(404).send('<h1>Website not found</h1>')
+        return
       }
+
+      const { html } = job.outputData as { html: string }
+      res.setHeader('Content-Type', 'text/html')
+      res.send(html)
+    } catch (err: any) {
+      res.status(500).send('<h1>Error loading website</h1>')
     }
-  )
+  }
+)
 
 export default router
