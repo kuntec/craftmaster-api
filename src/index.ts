@@ -15,6 +15,7 @@ import websiteRoutes from './routes/website'
 import jobsRoutes from './routes/jobs'
 import { errorHandler, notFound } from './middleware/errorHandler'
 import projectRoutes from './routes/projects'
+import freeRoutes from './routes/free'
 
 const app = express()
 const PORT = process.env.PORT || 3001
@@ -60,7 +61,7 @@ app.use('/video',   videoRoutes)
 app.use('/website', websiteRoutes)
 app.use('/jobs',    jobsRoutes)
 app.use('/projects', projectRoutes)
-
+app.use('/free', freeRoutes)
 app.use(notFound)
 app.use(errorHandler)
 
