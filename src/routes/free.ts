@@ -165,19 +165,28 @@ router.get('/limits', async (req: Request, res: Response): Promise<void> => {
   }
 })
 
-// ── GET /free/jobs/poll/:replicateId ──────────────────────
-router.get('/jobs/poll/:replicateId', async (req: Request, res: Response): Promise<void> => {
-    try {
-        const { replicateId } = req.params as { replicateId: string }
+router.get(
+    '/jobs/poll/:replicateId',
+    async (req: Request, res: Response): Promise<void> => {
+      try {
+        const replicateId = req.params['replicateId'] as string
+  
+        if (!replicateId) {
+          res.status(400).json({ error: 'replicateId is required' })
+          return
+        }
+  
         const result = await replicateService.pollJob(replicateId)
-      res.json({
-        status: result.status,
-        output: result.output,
-        error:  result.error,
-      })
-    } catch (err: any) {
-      res.status(500).json({ error: err.message })
+  
+        res.json({
+          status: result.status,
+          output: result.output,
+          error:  result.error,
+        })
+      } catch (err: any) {
+        res.status(500).json({ error: err.message })
+      }
     }
-  })
+  )
 
 export default router
