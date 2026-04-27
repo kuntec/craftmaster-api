@@ -47,8 +47,14 @@ export const stripeService = {
     }
 
     // Calculate price in cents ($1 = 100 credits)
-    const amountCents = Math.round((credits / 100) * 100)
-
+    //const amountCents = Math.round((credits / 100) * 100)
+    const priceInDollars = credits / 20
+    const amountCents    = Math.round(priceInDollars * 100)
+    // Minimum $2.50 (50 credits)
+  if (amountCents < 250) {
+    throw new Error('Minimum purchase is 50 credits ($2.50)')
+  }
+  
     const customerId = await stripeService.getOrCreateCustomer(userId, email)
 
     const session = await stripeClient.checkout.sessions.create({
