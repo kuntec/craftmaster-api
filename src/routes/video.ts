@@ -31,6 +31,16 @@ router.post(
       // 10 seconds costs double
       const creditsRequired = duration === 10 ? CREDITS_VIDEO * 2 : CREDITS_VIDEO
 
+      // TEMPORARY DEBUG LOG
+    console.log('=== VIDEO DEBUG ===')
+    console.log('User ID:', req.user!._id)
+    console.log('User balance from token:', req.user!.creditsBalance)
+    console.log('Duration:', duration)
+    console.log('CREDITS_VIDEO env:', process.env.CREDITS_VIDEO)
+    console.log('CREDITS_VIDEO parsed:', CREDITS_VIDEO)
+    console.log('Credits required:', creditsRequired)
+    console.log('===================')
+
       // Check credits manually since cost varies
       if (req.user!.creditsBalance < creditsRequired) {
         res.status(402).json({
