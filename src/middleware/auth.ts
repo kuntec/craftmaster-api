@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express'
 import { verifyToken } from '../config/jwt'
 import User, { IUser } from '../models/User'
 
+
 export interface AuthRequest extends Request {
   user?: IUser
 }

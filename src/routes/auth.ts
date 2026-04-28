@@ -5,6 +5,7 @@ import User from '../models/User'
 import CreditTransaction from '../models/CreditTransaction'
 import { generateToken } from '../config/jwt'
 import { authenticate, AuthRequest } from '../middleware/auth'
+import { OAuth2Client } from 'google-auth-library'
 
 const router = Router()
 
@@ -146,6 +147,113 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
     res.status(500).json({ error: 'Login failed' })
   }
 })
+
+// ── POST /auth/google ─────────────────────────────────────
+router.post('/google', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { idToken, referralCode } = req.body
+
+    if (!idToken) {
+      res.status(400).json({ error: 'Google ID token is required' })
+      return
+    }
+
+    // Verify token with Google
+    const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID)
+    const ticket = await googleClient.verifyIdToken({
+      idToken,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    })
+
+    const payload = ticket.getPayload()
+    if (!payload?.email) {
+      res.status(400).json({ error: 'Invalid Google token' })
+      return
+    }
+
+    const { email, name, picture: avatarUrl, sub: googleId } = payload
+
+    // Find existing user by googleId or email
+    let user = await User.findOne({ $or: [{ googleId }, { email }] })
+
+    if (!user) {
+      // New user — create account
+      user = await User.create({
+        email,
+        name:           name || email.split('@')[0],
+        avatarUrl,
+        googleId,
+        referralCode:   nanoid(8).toUpperCase(),
+        creditsBalance: 30,
+        plan:           'FREE',
+      })
+
+      // Log free credits
+      await CreditTransaction.create({
+        userId:      user._id,
+        amount:      30,
+        type:        'FREE_CREDITS',
+        description: 'Welcome credits',
+      })
+
+      // Apply referral if provided
+      if (referralCode) {
+        const referrer = await User.findOne({ referralCode })
+        if (referrer) {
+          await User.findByIdAndUpdate(user._id, {
+            $inc:       { creditsBalance: 20 },
+            referredBy: referralCode,
+          })
+          await CreditTransaction.create({
+            userId:      user._id,
+            amount:      20,
+            type:        'REFERRAL_RECEIVE',
+            description: 'Referral bonus for signing up',
+          })
+          await User.findByIdAndUpdate(referrer._id, {
+            $inc: { creditsBalance: 20 },
+          })
+          await CreditTransaction.create({
+            userId:      referrer._id,
+            amount:      20,
+            type:        'REFERRAL_GIVE',
+            description: 'Referral reward',
+          })
+        }
+      }
+    } else if (!user.googleId) {
+      // Existing email user — link Google account
+      await User.findByIdAndUpdate(user._id, { googleId, avatarUrl })
+    }
+
+    if (!user.isActive) {
+      res.status(401).json({ error: 'Account is inactive' })
+      return
+    }
+
+    // Refetch to get updated credits
+    const updatedUser = await User.findById(user._id)
+
+    const token = generateToken(user._id.toString())
+
+    res.json({
+      token,
+      user: {
+        id:             updatedUser!._id,
+        name:           updatedUser!.name,
+        email:          updatedUser!.email,
+        creditsBalance: updatedUser!.creditsBalance,
+        referralCode:   updatedUser!.referralCode,
+        plan:           updatedUser!.plan,
+      },
+    })
+  } catch (err: any) {
+    console.error('Google auth error:', err.message)
+    res.status(500).json({ error: 'Google authentication failed' })
+  }
+})
+
+
 
 // ── GET /auth/me ─────────────────────────────────────────
 router.get('/me', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
