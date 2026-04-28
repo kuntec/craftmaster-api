@@ -3,6 +3,7 @@ import { authenticate, requireCredits, AuthRequest } from '../middleware/auth'
 import { creditsService } from '../services/credits'
 import { replicateService } from '../services/replicate'
 import Job from '../models/Job'
+import User from '../models/User'
 
 const router = Router()
 
@@ -41,12 +42,19 @@ router.post(
     console.log('Credits required:', creditsRequired)
     console.log('===================')
 
+    // Re-fetch fresh balance directly from DB
+    const freshUser = await User.findById(req.user!._id).select('creditsBalance')
+    const freshBalance = freshUser?.creditsBalance ?? 0
+
+    console.log('Fresh balance from DB:', freshBalance)
+    console.log('Credits required:', creditsRequired)
+
       // Check credits manually since cost varies
-      if (req.user!.creditsBalance < creditsRequired) {
+      if (freshBalance < creditsRequired) {
         res.status(402).json({
-          error: 'Insufficient credits',
+          error:    'Insufficient credits',
           required: creditsRequired,
-          balance: req.user!.creditsBalance,
+          balance:  freshBalance,
         })
         return
       }
