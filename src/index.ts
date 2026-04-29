@@ -22,6 +22,7 @@ import adminStatsRoutes       from './routes/admin/stats'
 import adminUsersRoutes       from './routes/admin/users'
 import adminPaymentsRoutes    from './routes/admin/payments'
 import adminGenerationsRoutes from './routes/admin/generations'
+import chatRoutes from './routes/chat'
 
 const app = express()
 const PORT = process.env.PORT || 3001
@@ -68,6 +69,8 @@ app.use('/website', websiteRoutes)
 app.use('/jobs',    jobsRoutes)
 app.use('/projects', projectRoutes)
 app.use('/free', freeRoutes)
+app.use('/chat', chatRoutes)
+
 
 // admin routes
 app.use('/admin/auth',        adminAuthRoutes)
