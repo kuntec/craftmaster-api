@@ -16,6 +16,12 @@ import jobsRoutes from './routes/jobs'
 import { errorHandler, notFound } from './middleware/errorHandler'
 import projectRoutes from './routes/projects'
 import freeRoutes from './routes/free'
+// Admin routes 
+import adminAuthRoutes        from './routes/admin/auth'
+import adminStatsRoutes       from './routes/admin/stats'
+import adminUsersRoutes       from './routes/admin/users'
+import adminPaymentsRoutes    from './routes/admin/payments'
+import adminGenerationsRoutes from './routes/admin/generations'
 
 const app = express()
 const PORT = process.env.PORT || 3001
@@ -62,6 +68,14 @@ app.use('/website', websiteRoutes)
 app.use('/jobs',    jobsRoutes)
 app.use('/projects', projectRoutes)
 app.use('/free', freeRoutes)
+
+// admin routes
+app.use('/admin/auth',        adminAuthRoutes)
+app.use('/admin/stats',       adminStatsRoutes)
+app.use('/admin/users',       adminUsersRoutes)
+app.use('/admin/payments',    adminPaymentsRoutes)
+app.use('/admin/generations', adminGenerationsRoutes)
+
 app.use(notFound)
 app.use(errorHandler)
 

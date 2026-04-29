@@ -12,6 +12,7 @@ export interface IUser extends Document {
   referralCode: string
   referredBy?: string
   plan: 'FREE' | 'STARTER' | 'PRO'
+  role: 'USER' | 'SUPERADMIN'
   stripeCustomerId?: string
   isActive: boolean
   createdAt: Date
@@ -30,6 +31,11 @@ const UserSchema = new Schema<IUser>(
     referralCode:     { type: String, unique: true, required: true },
     referredBy:       { type: String },
     plan:             { type: String, enum: ['FREE', 'STARTER', 'PRO'], default: 'FREE' },
+    role: {
+      type:    String,
+      enum:    ['USER', 'SUPERADMIN'],
+      default: 'USER',
+    },
     stripeCustomerId: { type: String, unique: true, sparse: true },
     isActive:         { type: Boolean, default: true },
   },
