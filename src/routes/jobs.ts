@@ -1,6 +1,7 @@
-import { Router, Response }           from 'express'
-import { authenticate, AuthRequest }  from '../middleware/auth'
-import Job                            from '../models/Job'
+import { Router, Response }               from 'express'
+import { authenticate, AuthRequest }       from '../middleware/auth'
+import Job                                 from '../models/Job'
+import { replicateService }               from '../services/replicate'
 import { processImageJob, processVideoJob } from '../services/fileProcessor'
 
 const router = Router()
@@ -54,26 +55,17 @@ router.get('/:id', async (req: AuthRequest, res: Response): Promise<void> => {
       return
     }
 
-    // If still processing — poll Replicate for latest status
+    // If still processing — poll Replicate
     if (
       job.replicateId &&
       (job.status === 'PENDING' || job.status === 'PROCESSING')
     ) {
       try {
-        const replicateRes = await fetch(
-          `https://api.replicate.com/v1/predictions/${job.replicateId}`,
-          {
-            headers: {
-              Authorization: `Token ${process.env.REPLICATE_API_TOKEN}`,
-            },
-          }
-        )
-
-        const replicateJob = await replicateRes.json() as any
+        const replicateJob = await replicateService.pollJob(job.replicateId)
 
         if (replicateJob.status === 'succeeded') {
           const output    = replicateJob.output
-          const outputUrl = Array.isArray(output) ? output[0] : output
+          const outputUrl = Array.isArray(output) ? output[0] : output as string
 
           await Job.findByIdAndUpdate(job._id, {
             status:    'COMPLETED',
@@ -83,19 +75,23 @@ router.get('/:id', async (req: AuthRequest, res: Response): Promise<void> => {
           job.status    = 'COMPLETED'
           job.outputUrl = outputUrl
 
-          // Save to R2 in background — don't block response
+          // R2 upload in background — completely isolated
           if (job.type === 'IMAGE' && outputUrl && job.storageProvider !== 'r2') {
-            processImageJob(
-              job._id.toString(),
-              job.userId.toString(),
-              outputUrl
-            ).catch(console.error)
+            setImmediate(() => {
+              processImageJob(
+                job._id.toString(),
+                job.userId.toString(),
+                outputUrl
+              ).catch(err => console.error('R2 image upload failed:', err.message))
+            })
           } else if (job.type === 'VIDEO' && outputUrl && job.storageProvider !== 'r2') {
-            processVideoJob(
-              job._id.toString(),
-              job.userId.toString(),
-              outputUrl
-            ).catch(console.error)
+            setImmediate(() => {
+              processVideoJob(
+                job._id.toString(),
+                job.userId.toString(),
+                outputUrl
+              ).catch(err => console.error('R2 video upload failed:', err.message))
+            })
           }
 
         } else if (
@@ -114,6 +110,7 @@ router.get('/:id', async (req: AuthRequest, res: Response): Promise<void> => {
           await Job.findByIdAndUpdate(job._id, { status: 'PROCESSING' })
           job.status = 'PROCESSING'
         }
+
       } catch (pollErr: any) {
         console.error('Replicate poll error:', pollErr.message)
       }

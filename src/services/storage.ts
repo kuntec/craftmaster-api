@@ -8,6 +8,9 @@ import {
   let r2Client: S3Client | null = null
   
   const getR2 = (): S3Client => {
+    if (!process.env.CLOUDFLARE_ACCOUNT_ID || !process.env.R2_ACCESS_KEY_ID) {
+      throw new Error('R2 not configured — missing env vars')
+    }
     if (!r2Client) {
       r2Client = new S3Client({
         region:   'auto',

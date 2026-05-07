@@ -8,22 +8,25 @@ export async function processImageJob(
   outputUrl: string
 ): Promise<string> {
   try {
-    const key         = generateKey(userId, 'image', 'jpg')
+    if (!process.env.R2_PUBLIC_URL) {
+      console.log('R2 not configured — skipping upload')
+      return outputUrl
+    }
+
+    const key          = generateKey(userId, 'image', 'jpg')
     const permanentUrl = await uploadFromUrl(outputUrl, key, 'image/jpeg')
 
-    // Update job with permanent URL
     await Job.findByIdAndUpdate(jobId, {
-      outputUrl:      permanentUrl,
-      storageKey:     key,
+      outputUrl:       permanentUrl,
+      storageKey:      key,
       storageProvider: 'r2',
     })
 
     console.log(`Image saved to R2: ${key}`)
     return permanentUrl
   } catch (err: any) {
-    console.error('Failed to save image to R2:', err.message)
-    // Return original URL as fallback
-    return outputUrl
+    console.error('R2 upload failed silently:', err.message)
+    return outputUrl  // always return something
   }
 }
 

@@ -3,6 +3,7 @@ import { authenticate, AuthRequest } from '../middleware/auth'
 import Job                           from '../models/Job'
 import User                          from '../models/User'
 import CreditTransaction             from '../models/CreditTransaction'
+import { replicateService }          from '../services/replicate'
 import { processImageJob }           from '../services/fileProcessor'
 
 const router = Router()
@@ -41,7 +42,7 @@ router.post('/generate', async (req: AuthRequest, res: Response): Promise<void> 
       creditsUsed: CREDITS_IMAGE,
     })
 
-    // Deduct credits atomically
+    // Deduct credits
     await User.findByIdAndUpdate(req.user!._id, {
       $inc: { creditsBalance: -CREDITS_IMAGE },
     })
@@ -53,45 +54,26 @@ router.post('/generate', async (req: AuthRequest, res: Response): Promise<void> 
       description: `Image generation: "${prompt.trim().slice(0, 50)}"`,
     })
 
-    // Start Replicate job
-    const replicateRes = await fetch(
-      'https://api.replicate.com/v1/models/black-forest-labs/flux-1.1-pro/predictions',
-      {
-        method:  'POST',
-        headers: {
-          Authorization:  `Token ${process.env.REPLICATE_API_TOKEN}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          input: {
-            prompt:        prompt.trim(),
-            width,
-            height,
-            output_format: 'jpg',
-            output_quality: 90,
-          },
-        }),
-      }
+    // Start Replicate job using existing service
+    const replicateId = await replicateService.createImageJob(
+      prompt.trim(),
+      width,
+      height
     )
-
-    const replicateJob = await replicateRes.json() as any
-
-    if (!replicateRes.ok) {
-      throw new Error(replicateJob.detail || 'Replicate API error')
-    }
 
     // Update job with Replicate ID
     await Job.findByIdAndUpdate(job._id, {
-      replicateId: replicateJob.id,
+      replicateId,
+      status: 'PROCESSING',
     })
 
     res.status(202).json({
       job: {
         ...job.toObject(),
-        replicateId: replicateJob.id,
+        replicateId,
       },
-      replicateId: replicateJob.id,
-      message:     'Image generation started. Poll /jobs/:id for status.',
+      replicateId,
+      message: 'Image generation started. Poll /jobs/:id for status.',
     })
   } catch (err: any) {
     res.status(500).json({ error: err.message })
