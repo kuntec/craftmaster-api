@@ -1,10 +1,9 @@
-import { Router, Response } from 'express'
-import { authenticate, AuthRequest } from '../middleware/auth'
-import { replicateService } from '../services/replicate'
-import Job from '../models/Job'
+import { Router, Response }           from 'express'
+import { authenticate, AuthRequest }  from '../middleware/auth'
+import Job                            from '../models/Job'
+import { processImageJob, processVideoJob } from '../services/fileProcessor'
 
 const router = Router()
-
 router.use(authenticate)
 
 // ── GET /jobs ─────────────────────────────────────────────
@@ -14,19 +13,18 @@ router.get('/', async (req: AuthRequest, res: Response): Promise<void> => {
     const limit  = parseInt(req.query.limit as string) || 20
     const type   = req.query.type   as string | undefined
     const status = req.query.status as string | undefined
-    const skip   = (page - 1) * limit
 
-    const filter: any = { userId: req.user!._id }
-    if (type)   filter.type   = type
-    if (status) filter.status = status
+    const query: any = { userId: req.user!._id }
+    if (type)   query.type   = type.toUpperCase()
+    if (status) query.status = status.toUpperCase()
 
     const [jobs, total] = await Promise.all([
-      Job.find(filter)
+      Job.find(query)
         .sort({ createdAt: -1 })
-        .skip(skip)
+        .skip((page - 1) * limit)
         .limit(limit)
         .lean(),
-      Job.countDocuments(filter),
+      Job.countDocuments(query),
     ])
 
     res.json({
@@ -56,40 +54,68 @@ router.get('/:id', async (req: AuthRequest, res: Response): Promise<void> => {
       return
     }
 
-    // If still processing — sync with Replicate
+    // If still processing — poll Replicate for latest status
     if (
       job.replicateId &&
       (job.status === 'PENDING' || job.status === 'PROCESSING')
     ) {
-      const result = await replicateService.pollJob(job.replicateId)
+      try {
+        const replicateRes = await fetch(
+          `https://api.replicate.com/v1/predictions/${job.replicateId}`,
+          {
+            headers: {
+              Authorization: `Token ${process.env.REPLICATE_API_TOKEN}`,
+            },
+          }
+        )
 
-      if (result.status === 'succeeded') {
-        const outputUrl = Array.isArray(result.output)
-          ? result.output[0]
-          : result.output
+        const replicateJob = await replicateRes.json() as any
 
-        await Job.findByIdAndUpdate(job._id, {
-          status:      'COMPLETED',
-          outputUrl,
-          completedAt: new Date(),
-        })
+        if (replicateJob.status === 'succeeded') {
+          const output    = replicateJob.output
+          const outputUrl = Array.isArray(output) ? output[0] : output
 
-        job.status    = 'COMPLETED'
-        job.outputUrl = outputUrl
-      } else if (
-        result.status === 'failed' ||
-        result.status === 'canceled'
-      ) {
-        await Job.findByIdAndUpdate(job._id, {
-          status:       'FAILED',
-          errorMessage: result.error || 'Generation failed',
-          completedAt:  new Date(),
-        })
+          await Job.findByIdAndUpdate(job._id, {
+            status:    'COMPLETED',
+            outputUrl: outputUrl,
+          })
 
-        job.status       = 'FAILED'
-        job.errorMessage = result.error || 'Generation failed'
-      } else {
-        job.status = 'PROCESSING'
+          job.status    = 'COMPLETED'
+          job.outputUrl = outputUrl
+
+          // Save to R2 in background — don't block response
+          if (job.type === 'IMAGE' && outputUrl && job.storageProvider !== 'r2') {
+            processImageJob(
+              job._id.toString(),
+              job.userId.toString(),
+              outputUrl
+            ).catch(console.error)
+          } else if (job.type === 'VIDEO' && outputUrl && job.storageProvider !== 'r2') {
+            processVideoJob(
+              job._id.toString(),
+              job.userId.toString(),
+              outputUrl
+            ).catch(console.error)
+          }
+
+        } else if (
+          replicateJob.status === 'failed' ||
+          replicateJob.status === 'canceled'
+        ) {
+          await Job.findByIdAndUpdate(job._id, {
+            status:       'FAILED',
+            errorMessage: replicateJob.error || 'Generation failed',
+          })
+
+          job.status       = 'FAILED'
+          job.errorMessage = replicateJob.error || 'Generation failed'
+
+        } else if (replicateJob.status === 'processing') {
+          await Job.findByIdAndUpdate(job._id, { status: 'PROCESSING' })
+          job.status = 'PROCESSING'
+        }
+      } catch (pollErr: any) {
+        console.error('Replicate poll error:', pollErr.message)
       }
     }
 

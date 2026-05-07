@@ -1,94 +1,105 @@
-import { Router, Response } from 'express'
-import { authenticate, requireCredits, AuthRequest } from '../middleware/auth'
-import { creditsService } from '../services/credits'
-import { replicateService } from '../services/replicate'
-import Job from '../models/Job'
+import { Router, Response }          from 'express'
+import { authenticate, AuthRequest } from '../middleware/auth'
+import Job                           from '../models/Job'
+import User                          from '../models/User'
+import CreditTransaction             from '../models/CreditTransaction'
+import { processImageJob }           from '../services/fileProcessor'
 
 const router = Router()
+router.use(authenticate)
 
 const CREDITS_IMAGE = parseInt(process.env.CREDITS_IMAGE || '4')
 
-const VALID_SIZES = [
-  { width: 1024, height: 1024 },
-  { width: 768,  height: 1152 },
-  { width: 1152, height: 768  },
-  { width: 1280, height: 720  },
-]
+// ── POST /image/generate ──────────────────────────────────
+router.post('/generate', async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { prompt, width = 1024, height = 1024 } = req.body
 
-// ── POST /image/generate ─────────────────────────────────
-router.post(
-  '/generate',
-  authenticate,
-  requireCredits(CREDITS_IMAGE),
-  async (req: AuthRequest, res: Response): Promise<void> => {
-    try {
-      const { prompt, width = 1024, height = 1024 } = req.body
-
-      // Validate prompt
-      if (!prompt || prompt.trim().length < 3) {
-        res.status(400).json({ error: 'Prompt must be at least 3 characters' })
-        return
-      }
-
-      // Validate size
-      const validSize = VALID_SIZES.find(
-        (s) => s.width === width && s.height === height
-      )
-      if (!validSize) {
-        res.status(400).json({
-          error: 'Invalid size',
-          validSizes: VALID_SIZES,
-        })
-        return
-      }
-
-      // Create job in DB
-      const job = await Job.create({
-        userId:      req.user!._id,
-        type:        'IMAGE',
-        status:      'PENDING',
-        prompt:      prompt.trim(),
-        parameters:  { width, height },
-        creditsUsed: CREDITS_IMAGE,
-      })
-
-      // Deduct credits
-      await creditsService.deduct(
-        req.user!._id.toString(),
-        CREDITS_IMAGE,
-        `Image generation: "${prompt.trim().slice(0, 50)}"`,
-        job._id
-      )
-
-      // Start Replicate job
-      const replicateId = await replicateService.createImageJob(
-        prompt.trim(),
-        width,
-        height
-      )
-
-      // Update job with Replicate ID
-      await Job.findByIdAndUpdate(job._id, {
-        replicateId,
-        status: 'PROCESSING',
-      })
-
-      res.status(202).json({
-        message: 'Image generation started',
-        jobId: job._id,
-        replicateId,
-        creditsUsed: CREDITS_IMAGE,
-        pollUrl: `/jobs/${job._id}`,
-      })
-    } catch (err: any) {
-      console.error('Image generation error:', err.message)
-      res.status(500).json({ error: err.message || 'Image generation failed' })
+    if (!prompt?.trim()) {
+      res.status(400).json({ error: 'Prompt is required' })
+      return
     }
-  }
-)
 
-// ── GET /image/sizes ─────────────────────────────────────
-router.get('/sizes', (_req, res) => {
+    // Check credits
+    const freshUser = await User.findById(req.user!._id).select('creditsBalance')
+    if (!freshUser || freshUser.creditsBalance < CREDITS_IMAGE) {
+      res.status(402).json({
+        error:    'Insufficient credits',
+        required: CREDITS_IMAGE,
+        balance:  freshUser?.creditsBalance ?? 0,
+      })
+      return
+    }
+
+    // Create job
+    const job = await Job.create({
+      userId:      req.user!._id,
+      type:        'IMAGE',
+      status:      'PROCESSING',
+      prompt:      prompt.trim(),
+      parameters:  { width, height },
+      creditsUsed: CREDITS_IMAGE,
+    })
+
+    // Deduct credits atomically
+    await User.findByIdAndUpdate(req.user!._id, {
+      $inc: { creditsBalance: -CREDITS_IMAGE },
+    })
+
+    await CreditTransaction.create({
+      userId:      req.user!._id,
+      amount:      -CREDITS_IMAGE,
+      type:        'USAGE',
+      description: `Image generation: "${prompt.trim().slice(0, 50)}"`,
+    })
+
+    // Start Replicate job
+    const replicateRes = await fetch(
+      'https://api.replicate.com/v1/models/black-forest-labs/flux-1.1-pro/predictions',
+      {
+        method:  'POST',
+        headers: {
+          Authorization:  `Token ${process.env.REPLICATE_API_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          input: {
+            prompt:        prompt.trim(),
+            width,
+            height,
+            output_format: 'jpg',
+            output_quality: 90,
+          },
+        }),
+      }
+    )
+
+    const replicateJob = await replicateRes.json() as any
+
+    if (!replicateRes.ok) {
+      throw new Error(replicateJob.detail || 'Replicate API error')
+    }
+
+    // Update job with Replicate ID
+    await Job.findByIdAndUpdate(job._id, {
+      replicateId: replicateJob.id,
+    })
+
+    res.status(202).json({
+      job: {
+        ...job.toObject(),
+        replicateId: replicateJob.id,
+      },
+      replicateId: replicateJob.id,
+      message:     'Image generation started. Poll /jobs/:id for status.',
+    })
+  } catch (err: any) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// ── GET /image/sizes ──────────────────────────────────────
+router.get('/sizes', (_req: AuthRequest, res: Response): void => {
   res.json({
     sizes: [
       { label: 'Square (1:1)',      width: 1024, height: 1024 },
@@ -96,7 +107,7 @@ router.get('/sizes', (_req, res) => {
       { label: 'Landscape (3:2)',   width: 1152, height: 768  },
       { label: 'Widescreen (16:9)', width: 1280, height: 720  },
     ],
-    credits: CREDITS_IMAGE,
+    cost: CREDITS_IMAGE,
   })
 })
 
