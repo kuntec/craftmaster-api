@@ -40,8 +40,17 @@ export async function processImageJob(
   try {
     console.log(`R2: uploading image for job ${jobId}`)
 
-    const key          = generateKey(userId, 'image', 'jpg')
-    const permanentUrl = await uploadFromUrl(outputUrl, key, 'image/jpeg')
+    // Detect file extension from URL
+    const ext      = outputUrl.includes('.webp') ? 'webp'
+                   : outputUrl.includes('.png')  ? 'png'
+                   : 'jpg'
+    const mimeType = ext === 'webp' ? 'image/webp'
+                   : ext === 'png'  ? 'image/png'
+                   : 'image/jpeg'
+
+    console.log(`R2: fetching ${outputUrl}`)
+    const key          = generateKey(userId, 'image', ext)
+    const permanentUrl = await uploadFromUrl(outputUrl, key, mimeType)
 
     await Job.findByIdAndUpdate(jobId, {
       outputUrl:       permanentUrl,
@@ -53,6 +62,7 @@ export async function processImageJob(
     return permanentUrl
   } catch (err: any) {
     console.error(`R2: image upload failed → ${err.message}`)
+    console.error(`R2: stack → ${err.stack}`)
     return outputUrl
   }
 }
@@ -66,7 +76,8 @@ export async function processVideoJob(
   try {
     console.log(`R2: uploading video for job ${jobId}`)
 
-    const key          = generateKey(userId, 'video', 'mp4')
+    const ext      = outputUrl.includes('.mp4') ? 'mp4' : 'mp4'
+    const key      = generateKey(userId, 'video', ext)
     const permanentUrl = await uploadFromUrl(outputUrl, key, 'video/mp4')
 
     await Job.findByIdAndUpdate(jobId, {
@@ -79,6 +90,7 @@ export async function processVideoJob(
     return permanentUrl
   } catch (err: any) {
     console.error(`R2: video upload failed → ${err.message}`)
+    console.error(`R2: stack → ${err.stack}`)
     return outputUrl
   }
 }

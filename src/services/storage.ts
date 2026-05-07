@@ -124,17 +124,26 @@ export async function uploadFromUrl(
   key:      string,
   mimeType: string
 ): Promise<string> {
-  console.log(`R2: fetching ${fileUrl}`)
+  console.log(`R2 storage: fetching file from ${fileUrl}`)
 
-  const response = await fetch(fileUrl)
+  const response = await fetch(fileUrl, {
+    headers: {
+      'User-Agent': 'Studio42/1.0',
+    },
+  })
+
   if (!response.ok) {
-    throw new Error(`Failed to fetch file: ${response.status} ${response.statusText}`)
+    throw new Error(`Fetch failed: ${response.status} ${response.statusText}`)
   }
 
-  const buffer = Buffer.from(await response.arrayBuffer())
-  console.log(`R2: fetched ${buffer.length} bytes`)
+  const arrayBuffer = await response.arrayBuffer()
+  const buffer      = Buffer.from(arrayBuffer)
 
-  await getR2().send(new PutObjectCommand({
+  console.log(`R2 storage: fetched ${buffer.length} bytes, uploading as ${mimeType}`)
+
+  const client = getR2()
+
+  await client.send(new PutObjectCommand({
     Bucket:      process.env.R2_BUCKET_NAME!,
     Key:         key,
     Body:        buffer,
@@ -142,10 +151,9 @@ export async function uploadFromUrl(
   }))
 
   const publicUrl = `${process.env.R2_PUBLIC_URL}/${key}`
-  console.log(`R2: uploaded → ${publicUrl}`)
+  console.log(`R2 storage: upload complete → ${publicUrl}`)
   return publicUrl
 }
-
 // ── Upload buffer ─────────────────────────────────────────
 export async function uploadBuffer(
   buffer:   Buffer,
