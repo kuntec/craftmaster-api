@@ -110,6 +110,7 @@ import Job                                 from '../models/Job'
 import { replicateService }               from '../services/replicate'
 import { processImageJob, processVideoJob } from '../services/fileProcessor'
 
+
 const router = Router()
 router.use(authenticate)
 
@@ -226,6 +227,64 @@ router.get('/:id', async (req: AuthRequest, res: Response): Promise<void> => {
 
     res.json({ job })
   } catch (err: any) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// ── POST /jobs/:id/save-to-r2 ─────────────────────────────
+router.post('/:id/save-to-r2', async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const job = await Job.findOne({
+      _id:    req.params.id,
+      userId: req.user!._id,
+    })
+
+    if (!job) {
+      res.status(404).json({ error: 'Job not found' })
+      return
+    }
+
+    // Already on R2 — nothing to do
+    if (job.storageProvider === 'r2') {
+      res.json({
+        success:      true,
+        outputUrl:    job.outputUrl,
+        alreadySaved: true,
+      })
+      return
+    }
+
+    // Not completed yet
+    if (job.status !== 'COMPLETED' || !job.outputUrl) {
+      res.status(400).json({ error: 'Job not completed yet' })
+      return
+    }
+
+    console.log(`R2: save-to-r2 triggered for job ${job._id} type ${job.type}`)
+
+    let permanentUrl = job.outputUrl
+
+    if (job.type === 'IMAGE') {
+      permanentUrl = await processImageJob(
+        job._id.toString(),
+        job.userId.toString(),
+        job.outputUrl
+      )
+    } else if (job.type === 'VIDEO') {
+      permanentUrl = await processVideoJob(
+        job._id.toString(),
+        job.userId.toString(),
+        job.outputUrl
+      )
+    }
+
+    res.json({
+      success:   true,
+      outputUrl: permanentUrl,
+      savedToR2: permanentUrl !== job.outputUrl,
+    })
+  } catch (err: any) {
+    console.error('save-to-r2 route error:', err.message)
     res.status(500).json({ error: err.message })
   }
 })

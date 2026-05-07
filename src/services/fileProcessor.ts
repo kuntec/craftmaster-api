@@ -1,46 +1,15 @@
-// import Job from '../models/Job'
-
-// // R2 temporarily disabled — returns original URL as-is
-// export async function processImageJob(
-//   jobId:     string,
-//   userId:    string,
-//   outputUrl: string
-// ): Promise<string> {
-//   console.log('R2 disabled — skipping image upload for job:', jobId)
-//   return outputUrl
-// }
-
-// export async function processVideoJob(
-//   jobId:     string,
-//   userId:    string,
-//   outputUrl: string
-// ): Promise<string> {
-//   console.log('R2 disabled — skipping video upload for job:', jobId)
-//   return outputUrl
-// }
-
-// export async function processWebsiteJob(
-//   jobId:     string,
-//   userId:    string,
-//   html:      string
-// ): Promise<string> {
-//   console.log('R2 disabled — skipping website upload for job:', jobId)
-//   return ''
-// }
-
-import Job               from '../models/Job'
+import Job                                   from '../models/Job'
 import { uploadFromUrl, uploadBuffer, generateKey } from './storage'
 
-// ── Process completed image job ───────────────────────────
+// ── Process image ─────────────────────────────────────────
 export async function processImageJob(
   jobId:     string,
   userId:    string,
   outputUrl: string
 ): Promise<string> {
   try {
-    console.log(`R2: uploading image for job ${jobId}`)
+    console.log(`R2: processing image job ${jobId}`)
 
-    // Detect file extension from URL
     const ext      = outputUrl.includes('.webp') ? 'webp'
                    : outputUrl.includes('.png')  ? 'png'
                    : 'jpg'
@@ -48,7 +17,6 @@ export async function processImageJob(
                    : ext === 'png'  ? 'image/png'
                    : 'image/jpeg'
 
-    console.log(`R2: fetching ${outputUrl}`)
     const key          = generateKey(userId, 'image', ext)
     const permanentUrl = await uploadFromUrl(outputUrl, key, mimeType)
 
@@ -58,26 +26,24 @@ export async function processImageJob(
       storageProvider: 'r2',
     })
 
-    console.log(`R2: image saved → ${permanentUrl}`)
+    console.log(`R2: image job ${jobId} saved → ${permanentUrl}`)
     return permanentUrl
   } catch (err: any) {
-    console.error(`R2: image upload failed → ${err.message}`)
-    console.error(`R2: stack → ${err.stack}`)
+    console.error(`R2: image job ${jobId} failed → ${err.message}`)
     return outputUrl
   }
 }
 
-// ── Process completed video job ───────────────────────────
+// ── Process video ─────────────────────────────────────────
 export async function processVideoJob(
   jobId:     string,
   userId:    string,
   outputUrl: string
 ): Promise<string> {
   try {
-    console.log(`R2: uploading video for job ${jobId}`)
+    console.log(`R2: processing video job ${jobId}`)
 
-    const ext      = outputUrl.includes('.mp4') ? 'mp4' : 'mp4'
-    const key      = generateKey(userId, 'video', ext)
+    const key          = generateKey(userId, 'video', 'mp4')
     const permanentUrl = await uploadFromUrl(outputUrl, key, 'video/mp4')
 
     await Job.findByIdAndUpdate(jobId, {
@@ -86,23 +52,22 @@ export async function processVideoJob(
       storageProvider: 'r2',
     })
 
-    console.log(`R2: video saved → ${permanentUrl}`)
+    console.log(`R2: video job ${jobId} saved → ${permanentUrl}`)
     return permanentUrl
   } catch (err: any) {
-    console.error(`R2: video upload failed → ${err.message}`)
-    console.error(`R2: stack → ${err.stack}`)
+    console.error(`R2: video job ${jobId} failed → ${err.message}`)
     return outputUrl
   }
 }
 
-// ── Process website HTML ──────────────────────────────────
+// ── Process website ───────────────────────────────────────
 export async function processWebsiteJob(
   jobId:     string,
   userId:    string,
   html:      string
 ): Promise<string> {
   try {
-    console.log(`R2: uploading website for job ${jobId}`)
+    console.log(`R2: processing website job ${jobId}`)
 
     const key          = generateKey(userId, 'website', 'html')
     const buffer       = Buffer.from(html, 'utf-8')
@@ -114,10 +79,10 @@ export async function processWebsiteJob(
       storageProvider: 'r2',
     })
 
-    console.log(`R2: website saved → ${permanentUrl}`)
+    console.log(`R2: website job ${jobId} saved → ${permanentUrl}`)
     return permanentUrl
   } catch (err: any) {
-    console.error(`R2: website upload failed → ${err.message}`)
+    console.error(`R2: website job ${jobId} failed → ${err.message}`)
     return ''
   }
 }

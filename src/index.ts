@@ -22,6 +22,8 @@ import adminStatsRoutes       from './routes/admin/stats'
 import adminUsersRoutes       from './routes/admin/users'
 import adminPaymentsRoutes    from './routes/admin/payments'
 import adminGenerationsRoutes from './routes/admin/generations'
+import adminStorageRoutes from './routes/admin/storage'
+
 import chatRoutes from './routes/chat'
 
 const app = express()
@@ -78,6 +80,8 @@ app.use('/admin/stats',       adminStatsRoutes)
 app.use('/admin/users',       adminUsersRoutes)
 app.use('/admin/payments',    adminPaymentsRoutes)
 app.use('/admin/generations', adminGenerationsRoutes)
+app.use('/admin/storage', adminStorageRoutes)
+
 
 app.use(notFound)
 app.use(errorHandler)
