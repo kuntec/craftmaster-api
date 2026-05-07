@@ -232,35 +232,43 @@ router.get('/:id', async (req: AuthRequest, res: Response): Promise<void> => {
 })
 
 // ── POST /jobs/:id/save-to-r2 ─────────────────────────────
+// ── POST /jobs/:id/save-to-r2 ─────────────────────────────
 router.post('/:id/save-to-r2', async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const job = await Job.findOne({
-      _id:    req.params.id,
-      userId: req.user!._id,
-    })
+    // Atomic check + lock — only proceed if not already r2
+    const job = await Job.findOneAndUpdate(
+      {
+        _id:             req.params.id,
+        userId:          req.user!._id,
+        status:          'COMPLETED',
+        storageProvider: { $ne: 'r2' },  // ← only if not already r2
+      },
+      {
+        $set: { storageProvider: 'uploading' }, // ← lock it
+      },
+      { new: false }  // return original doc
+    )
 
+    // If null — already saved or not found
     if (!job) {
-      res.status(404).json({ error: 'Job not found' })
-      return
-    }
-
-    // Already on R2 — nothing to do
-    if (job.storageProvider === 'r2') {
+      const existing = await Job.findOne({
+        _id:    req.params.id,
+        userId: req.user!._id,
+      })
       res.json({
         success:      true,
-        outputUrl:    job.outputUrl,
+        outputUrl:    existing?.outputUrl,
         alreadySaved: true,
       })
       return
     }
 
-    // Not completed yet
-    if (job.status !== 'COMPLETED' || !job.outputUrl) {
-      res.status(400).json({ error: 'Job not completed yet' })
+    if (!job.outputUrl) {
+      res.status(400).json({ error: 'No output URL found' })
       return
     }
 
-    console.log(`R2: save-to-r2 triggered for job ${job._id} type ${job.type}`)
+    console.log(`R2: save-to-r2 triggered for job ${job._id}`)
 
     let permanentUrl = job.outputUrl
 
@@ -281,10 +289,10 @@ router.post('/:id/save-to-r2', async (req: AuthRequest, res: Response): Promise<
     res.json({
       success:   true,
       outputUrl: permanentUrl,
-      savedToR2: permanentUrl !== job.outputUrl,
+      savedToR2: true,
     })
   } catch (err: any) {
-    console.error('save-to-r2 route error:', err.message)
+    console.error('save-to-r2 error:', err.message)
     res.status(500).json({ error: err.message })
   }
 })
