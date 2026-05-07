@@ -1,8 +1,7 @@
-import { Router, Response }               from 'express'
-import { authenticate, AuthRequest }       from '../middleware/auth'
-import Job                                 from '../models/Job'
-import { replicateService }               from '../services/replicate'
-import { processImageJob, processVideoJob } from '../services/fileProcessor'
+import { Router, Response }          from 'express'
+import { authenticate, AuthRequest } from '../middleware/auth'
+import Job                           from '../models/Job'
+import { replicateService }          from '../services/replicate'
 
 const router = Router()
 router.use(authenticate)
@@ -55,7 +54,7 @@ router.get('/:id', async (req: AuthRequest, res: Response): Promise<void> => {
       return
     }
 
-    // If still processing — poll Replicate
+    // Poll Replicate if still processing
     if (
       job.replicateId &&
       (job.status === 'PENDING' || job.status === 'PROCESSING')
@@ -74,25 +73,6 @@ router.get('/:id', async (req: AuthRequest, res: Response): Promise<void> => {
 
           job.status    = 'COMPLETED'
           job.outputUrl = outputUrl
-
-          // R2 upload in background — completely isolated
-          if (job.type === 'IMAGE' && outputUrl && job.storageProvider !== 'r2') {
-            setImmediate(() => {
-              processImageJob(
-                job._id.toString(),
-                job.userId.toString(),
-                outputUrl
-              ).catch(err => console.error('R2 image upload failed:', err.message))
-            })
-          } else if (job.type === 'VIDEO' && outputUrl && job.storageProvider !== 'r2') {
-            setImmediate(() => {
-              processVideoJob(
-                job._id.toString(),
-                job.userId.toString(),
-                outputUrl
-              ).catch(err => console.error('R2 video upload failed:', err.message))
-            })
-          }
 
         } else if (
           replicateJob.status === 'failed' ||
