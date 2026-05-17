@@ -92,23 +92,50 @@ export async function streamChat(
 
     } else if (model.provider === 'google') {
       const googleModel = getGoogle().getGenerativeModel({
-        model: model.modelId,
+        model:          model.modelId,
+        generationConfig: {
+          maxOutputTokens: 2048,
+        },
       })
-
-      // Convert to Google format
-      const history = messages.slice(0, -1).map(m => ({
-        role:  m.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: m.content }],
-      }))
-
-      const lastMessage = messages[messages.length - 1].content
-
-      const chat   = googleModel.startChat({ history })
-      const result = await chat.sendMessageStream(lastMessage)
-
+    
+      // Build history — Google uses 'model' not 'assistant'
+      // Must alternate user/model and start with user
+      const validMessages = messages.filter(m => m.content.trim())
+    
+      // Separate history from last message
+      const history     = validMessages.slice(0, -1)
+      const lastMessage = validMessages[validMessages.length - 1]
+    
+      if (!lastMessage) {
+        throw new Error('No message to send')
+      }
+    
+      // Convert to Google format — filter out consecutive same roles
+      const googleHistory: { role: string; parts: { text: string }[] }[] = []
+      for (const msg of history) {
+        const googleRole = msg.role === 'assistant' ? 'model' : 'user'
+        // Skip if same role as previous (Google requires alternating)
+        const last = googleHistory[googleHistory.length - 1]
+        if (last && last.role === googleRole) continue
+        googleHistory.push({
+          role:  googleRole,
+          parts: [{ text: msg.content }],
+        })
+      }
+    
+      const chat = googleModel.startChat({
+        history: googleHistory,
+      })
+    
+      const result = await chat.sendMessageStream(lastMessage.content)
+    
       for await (const chunk of result.stream) {
-        const text = chunk.text()
-        if (text) send(text)
+        try {
+          const text = chunk.text()
+          if (text) send(text)
+        } catch {
+          // skip malformed chunks
+        }
       }
     }
 
