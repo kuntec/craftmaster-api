@@ -25,6 +25,7 @@ import adminGenerationsRoutes from './routes/admin/generations'
 import adminStorageRoutes from './routes/admin/storage'
 
 import chatRoutes from './routes/chat'
+import videoStudioRoutes from './routes/video-studio'
 
 const app = express()
 const PORT = process.env.PORT || 3001
@@ -72,7 +73,7 @@ app.use('/jobs',    jobsRoutes)
 app.use('/projects', projectRoutes)
 app.use('/free', freeRoutes)
 app.use('/chat', chatRoutes)
-
+app.use('/video-studio', videoStudioRoutes)
 
 // admin routes
 app.use('/admin/auth',        adminAuthRoutes)
@@ -81,7 +82,6 @@ app.use('/admin/users',       adminUsersRoutes)
 app.use('/admin/payments',    adminPaymentsRoutes)
 app.use('/admin/generations', adminGenerationsRoutes)
 app.use('/admin/storage', adminStorageRoutes)
-
 
 app.use(notFound)
 app.use(errorHandler)

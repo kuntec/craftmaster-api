@@ -30,7 +30,7 @@ export const claudeService = {
     const client = getClient()
 
     const response = await client.messages.create({
-      model:      'claude-sonnet-4-20250514',
+      model:      'claude-sonnet-4-5-20250929',
       max_tokens: 8000,
       system:     SYSTEM_PROMPT,
       messages: [

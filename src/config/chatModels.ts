@@ -35,9 +35,9 @@ export interface ChatModel {
     },
     {
       id:          'claude-sonnet',
-      name:        'Claude Sonnet 4',
+      name:        'Claude Sonnet 4.5',
       provider:    'anthropic',
-      modelId:     'claude-sonnet-4-20250514',
+      modelId:     'claude-sonnet-4-5-20250929',
       credits:     5,
       description: 'Anthropic\'s most intelligent model. Excellent reasoning.',
       badge:       'Smart',
